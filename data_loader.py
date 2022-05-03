@@ -1,7 +1,5 @@
 import pandas as pd
 import pandas.api.types as ptypes
-import numpy as np
-from scipy.interpolate import interp1d
 
 from sqlalchemy import create_engine  # database connection
 from IPython.display import display
@@ -9,6 +7,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import subprocess
 from sklearn.neighbors import KDTree
+
 monthDict = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct',
              11: 'Nov', 12: 'Dec'}
 
@@ -17,6 +16,69 @@ seasonDict = {1: 'Winter  ',
               3: 'Summer ',
               4: 'Fall'
               }
+
+bird_list = pd.read_csv('data/nabbp/readme_NABBP_bird_groups_1-10_and_MALL.csv',
+                        usecols=['Download_grp', 'SPECIES_ID', 'SPECIES_NAME'],
+                        index_col='SPECIES_ID')
+
+
+def get_bird(name: str = 'American Goldfinch'):
+    results = find_bird_ids(name)
+    # if results.shape[0]== 1:
+    return results.iloc[0]
+
+
+def load_default():
+    bird = get_bird()
+    display(bird)
+    return Data(bird_name=bird.SPECIES_NAME, group_n=bird.Download_grp)
+
+
+def find_bird_ids(bird_name: str = 'Eagle'):  # all birds with keyword eagle
+    return bird_list[bird_list.SPECIES_NAME.str.contains(bird_name)]
+
+
+class Data:
+    def __init__(self, bird_name=None, bird_id=None, popular=False, random=False, group_n=3):
+        self.disk_engine = create_engine(
+            'sqlite:///data/nabbp/db/bbp_{}.db'.format(group_n))  # Initializes database in current directory
+
+        self.bird_id = bird_id
+        self.birds = self.get_popular()
+        if bird_name:
+            self.bird_id = int(find_bird_ids(bird_name).index[0])
+        elif popular:
+            self.bird_id = self.birds.index.iloc[0]
+        elif random:
+            self.bird_id = self.get_random()
+        if isinstance(self.bird_id, int):
+            self.load_bird()
+        else:
+            self.bird_name = None
+            self.bird = None
+
+    def find_bird_name(self, bird_id: int = 3850):
+        display(self.birds[self.birds.index == bird_id])
+        return self.birds[self.birds.index == bird_id].SPECIES_NAME.iloc[0]
+
+    def load_bird(self):
+        if self.bird_id:
+            self.bird_name = self.find_bird_name(self.bird_id)
+            df = pd.read_sql_query(f'SELECT * FROM data WHERE id={self.bird_id}', self.disk_engine, parse_dates=['t'],
+                                   index_col='t')
+            self.bird = df.drop(['index'], axis=1).drop_duplicates()
+
+    def get_popular(self):
+        occurs = pd.read_sql_query(f'SELECT id as SPECIES_ID, count(*) as cnt FROM data group by id', self.disk_engine)
+        occurs.set_index('SPECIES_ID', inplace=True)
+        df = bird_list.join(occurs.cnt)
+        df = df[df.cnt.notna()]
+        df.cnt = df.cnt.astype(int)
+        df.sort_values('cnt', ascending=False, inplace=True)
+        return df
+
+    def get_random(self):
+        return pd.read_sql_query(f'SELECT id FROM data ORDER BY RANDOM() LIMIT 1', self.disk_engine).id.iloc[0]
 
 
 def create_animation(bird, remove_noise=True, by_season=True):
@@ -148,55 +210,6 @@ def plot_sightings(bird, frame='Yearly'):  # frame OPTIONS: {Daily, Monthly OR Y
 
     else:
         print('ALLOWED OPTIONS: {Daily, WeekDay, Monthly OR Yearly}')
-
-
-class Data:
-    def __init__(self, bird_name=None, bird_id=None, popular=False, random=False, group_n=3):
-        self.disk_engine = create_engine(
-            'sqlite:///data/db/bbp_{}.db'.format(group_n))  # Initializes database in current directory
-
-        self.bird_list = pd.read_csv('data/readme_NABBP_bird_groups_1-10_and_MALL.csv',
-                                     usecols=['Download_grp', 'SPECIES_ID', 'SPECIES_NAME'],
-                                     index_col='SPECIES_ID')
-        self.bird_id = bird_id
-        self.birds = self.get_popular()
-        if bird_name:
-            self.bird_id = int(self.find_bird_ids(bird_name).index[0])
-        elif popular:
-            self.bird_id = self.birds.index.iloc[0]
-        elif random:
-            self.bird_id = self.get_random()
-        if isinstance(self.bird_id, int):
-            self.load_bird()
-        else:
-            self.bird_name = None
-            self.bird = None
-
-    def find_bird_ids(self, bird_name: str = 'Eagle'):  # all birds with keyword eagle
-        return self.bird_list[self.bird_list.SPECIES_NAME.str.contains(bird_name)]
-
-    def find_bird_name(self, bird_id: int = 3850):
-        display(self.birds[self.birds.index == bird_id])
-        return self.birds[self.birds.index == bird_id].SPECIES_NAME.iloc[0]
-
-    def load_bird(self):
-        if self.bird_id:
-            self.bird_name = self.find_bird_name(self.bird_id)
-            df = pd.read_sql_query(f'SELECT * FROM data WHERE id={self.bird_id}', self.disk_engine, parse_dates=['t'],
-                                   index_col='t')
-            self.bird = df.drop(['index'], axis=1).drop_duplicates()
-
-    def get_popular(self):
-        occurs = pd.read_sql_query(f'SELECT id as SPECIES_ID, count(*) as cnt FROM data group by id', self.disk_engine)
-        occurs.set_index('SPECIES_ID', inplace=True)
-        df = self.bird_list.join(occurs.cnt)
-        df = df[df.cnt.notna()]
-        df.cnt = df.cnt.astype(int)
-        df.sort_values('cnt', ascending=False, inplace=True)
-        return df
-
-    def get_random(self):
-        return pd.read_sql_query(f'SELECT id FROM data ORDER BY RANDOM() LIMIT 1', self.disk_engine).id.iloc[0]
 
 
 if __name__ == '__main__':

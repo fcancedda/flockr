@@ -433,7 +433,7 @@ def plot_molecule_types(molecule_selection):
         fig: figure object showing the molecule types and their scalar coupling constant distribution
              as a violin plot
     """
-    file_folder = "data/raw"
+    file_folder = "data/nabbp/raw"
     train = pd.read_csv(f"{file_folder}/train.csv.zip", compression="zip")
     selection = train[train["molecule_name"].isin(molecule_selection)].reset_index()
 
